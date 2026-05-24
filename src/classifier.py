@@ -5,8 +5,8 @@ Retourne None si le mail n'est pas lié à une candidature.
 import os
 import json
 import time
-import google.generativeai as genai
-from google.api_core.exceptions import ResourceExhausted
+from google import genai
+from google.genai import errors as genai_errors
 
 CATEGORIES = [
     "Entretien",
@@ -49,15 +49,14 @@ def _get_client():
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("Variable d'environnement GEMINI_API_KEY manquante.")
-    genai.configure(api_key=api_key)
-    return genai.GenerativeModel("gemini-1.5-flash")
+    return genai.Client(api_key=api_key)
 
 
 def classify_email(email: dict) -> dict | None:
     """
     Retourne un dict avec les champs enrichis, ou None si hors candidature.
     """
-    model = _get_client()
+    client = _get_client()
 
     prompt = PROMPT_TEMPLATE.format(
         categories=", ".join(CATEGORIES),
@@ -68,17 +67,21 @@ def classify_email(email: dict) -> dict | None:
 
     for attempt in range(4):
         try:
-            response = model.generate_content(
-                prompt,
-                generation_config={"temperature": 0.1, "max_output_tokens": 512},
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+                config={"temperature": 0.1, "max_output_tokens": 512},
             )
             break
-        except ResourceExhausted as e:
-            if attempt == 3:
+        except genai_errors.ClientError as e:
+            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                if attempt == 3:
+                    raise
+                wait = 30 * (attempt + 1)
+                print(f"    Rate limit Gemini, attente {wait}s (tentative {attempt + 1}/4)...")
+                time.sleep(wait)
+            else:
                 raise
-            wait = 30 * (attempt + 1)
-            print(f"    Rate limit Gemini, attente {wait}s (tentative {attempt + 1}/4)...")
-            time.sleep(wait)
 
     raw = response.text.strip()
     if raw.startswith("```"):
