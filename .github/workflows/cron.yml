@@ -32,6 +32,14 @@ jobs:
           restore-keys: |
             processed-ids-
 
+      - name: Vérification clé Gemini
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          echo "Longueur de la clé : ${#GEMINI_API_KEY}"
+          curl -s -o /dev/null -w "HTTP status Gemini: %{http_code}\n" \
+            "https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}"
+
       - name: Exécution du classificateur
         env:
           GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
