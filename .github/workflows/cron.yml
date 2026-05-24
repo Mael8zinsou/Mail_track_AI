@@ -1,0 +1,48 @@
+name: Mail Track AI — Classifieur quotidien
+
+on:
+  schedule:
+    # 16h00 UTC = ~18h00 Paris (heure d'été) / ~17h00 (heure d'hiver)
+    - cron: "0 16 * * *"
+  workflow_dispatch:  # permet de lancer manuellement depuis l'onglet Actions
+
+jobs:
+  classify-emails:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout du dépôt
+        uses: actions/checkout@v4
+
+      - name: Configuration Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Installation des dépendances
+        run: pip install -r requirements.txt
+
+      - name: Restauration du cache processed_ids.json
+        uses: actions/cache@v4
+        with:
+          path: processed_ids.json
+          key: processed-ids-${{ github.run_id }}
+          restore-keys: |
+            processed-ids-
+
+      - name: Exécution du classificateur
+        env:
+          GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_SHEET_NAME: ${{ vars.GOOGLE_SHEET_NAME || 'Suivi candidatures' }}
+        run: python main.py
+
+      - name: Sauvegarde du cache processed_ids.json
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: processed_ids.json
+          key: processed-ids-${{ github.run_id }}

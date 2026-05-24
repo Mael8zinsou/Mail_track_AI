@@ -1,0 +1,19 @@
+# Secrets OAuth — NE JAMAIS COMMITTER
+credentials.json
+token.json
+
+# IDs traités (cache local — géré par GitHub Actions cache)
+processed_ids.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Env local
+.env
+*.env
