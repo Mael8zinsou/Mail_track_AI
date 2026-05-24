@@ -92,6 +92,13 @@ def classify_email(email: dict) -> dict | None:
             wait = 30 * (attempt + 1)
             print(f"    Rate limit Gemini (RPM), attente {wait}s (tentative {attempt + 1}/4)...")
             time.sleep(wait)
+        except genai_errors.ServerError as e:
+            # 503/500 : surcharge serveur temporaire, on réessaye après une courte pause.
+            if attempt == 3:
+                raise
+            wait = 10 * (attempt + 1)
+            print(f"    Serveur Gemini indisponible (503), attente {wait}s (tentative {attempt + 1}/4)...")
+            time.sleep(wait)
 
     raw = response.text.strip()
     if raw.startswith("```"):

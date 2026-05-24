@@ -2,6 +2,7 @@
 Point d'entrée principal. Appelé par GitHub Actions ou manuellement.
 """
 import time
+from google.genai.errors import ServerError
 from src.gmail_reader import fetch_new_emails, mark_as_processed
 from src.classifier import classify_email, QuotaExhausted
 from src.sheets_writer import append_results
@@ -34,6 +35,11 @@ def run():
             result = classify_email(email)
         except QuotaExhausted:
             print("  Quota journalier Gemini atteint (20 RPD free tier).")
+            print("  Arrêt propre : les mails restants seront traités au prochain run.")
+            quota_hit = True
+            break
+        except ServerError:
+            print("  Serveur Gemini indisponible (503) malgré les retries.")
             print("  Arrêt propre : les mails restants seront traités au prochain run.")
             quota_hit = True
             break
