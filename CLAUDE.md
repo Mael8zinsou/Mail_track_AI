@@ -19,8 +19,19 @@ données déjà classifiées écrites, reste reporté au prochain run.
 4. 403 Sheets → la Sheet n'était pas partagée avec le compte du token (multi-comptes Google). Réglé : partage en éditeur.
 5. `values().insert` inexistant → remplacé par `batchUpdate` (insertDimension) + `values().update` + helper `_get_sheet_gid`.
 
-### LIMITE CONNUE : 20 RPD trop juste
-1 requête Gemini par mail → 20 mails/jour sature le quota. **Amélioration recommandée : batcher N mails en 1 requête** (1 prompt = tableau de mails → tableau JSON de classifications). Diviserait le nb de requêtes par ~N.
+### LIMITE 20 RPD → CORRIGÉE PAR BATCHING (à tester demain, quota épuisé aujourd'hui)
+
+**Batching implémenté** (commit à venir) : 1 requête Gemini par LOT de mails au lieu d'1 par mail.
+- `classify_batch(emails)` dans `src/classifier.py` : découpe en lots de `MAX_BATCH_SIZE=15`, 1 prompt/lot renvoyant un tableau JSON `[{index, est_candidature, ...}]`, réassociation par `index`.
+- Robustesse (important car non testé en live) :
+  - parsing JSON échoué sur un lot → lot non marqué traité, repris au prochain run (pas de crash).
+  - mail absent de la réponse → non marqué, reporté.
+  - `QuotaExhausted` porte désormais `partial_results`/`partial_processed` → on conserve ce qui a été fait avant l'épuisement.
+- `main.py` : appel unique `classify_batch`, suppression de la boucle + du `sleep(7s)`.
+- `classify_email` (unitaire) conservée comme fallback, factorisée via `_generate_with_retry`.
+- `py_compile` OK sur tous les fichiers. **PAS testé en live** (quota 20 RPD déjà atteint le jour de l'implémentation).
+
+État stable précédent sauvegardé : tag git `pipeline-ok-v1` (local + GitHub).
 
 ---
 

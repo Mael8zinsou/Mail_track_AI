@@ -1,14 +1,10 @@
 """
 Point d'entrée principal. Appelé par GitHub Actions ou manuellement.
 """
-import time
 from google.genai.errors import ServerError
 from src.gmail_reader import fetch_new_emails, mark_as_processed
-from src.classifier import classify_email, QuotaExhausted
+from src.classifier import classify_batch, QuotaExhausted
 from src.sheets_writer import append_results
-
-# 10 RPM sur gemini-2.5-flash-lite => >=6s entre 2 appels.
-DELAY_BETWEEN_CALLS = 7
 
 
 def run():
@@ -22,37 +18,25 @@ def run():
         print("Rien à faire.")
         return
 
-    classified = []
-    skipped = 0
-    processed_now = []  # mails effectivement traités (à marquer)
     quota_hit = False
 
-    for i, email in enumerate(emails, 1):
-        subject = email.get("subject", "(sans objet)")
-        print(f"  [{i}/{len(emails)}] Analyse : {subject[:60]}")
+    # Classification en lot : 1 requête Gemini par lot (au lieu d'1 par mail).
+    try:
+        classified, processed_now = classify_batch(emails)
+    except QuotaExhausted as e:
+        print("  Quota journalier Gemini atteint (20 RPD free tier).")
+        print("  Arrêt propre : les mails restants seront traités au prochain run.")
+        classified = e.partial_results
+        processed_now = e.partial_processed
+        quota_hit = True
+    except ServerError:
+        print("  Serveur Gemini indisponible (503) malgré les retries.")
+        print("  Arrêt propre : les mails restants seront traités au prochain run.")
+        classified = []
+        processed_now = []
+        quota_hit = True
 
-        try:
-            result = classify_email(email)
-        except QuotaExhausted:
-            print("  Quota journalier Gemini atteint (20 RPD free tier).")
-            print("  Arrêt propre : les mails restants seront traités au prochain run.")
-            quota_hit = True
-            break
-        except ServerError:
-            print("  Serveur Gemini indisponible (503) malgré les retries.")
-            print("  Arrêt propre : les mails restants seront traités au prochain run.")
-            quota_hit = True
-            break
-
-        processed_now.append(email["message_id"])
-        if result is None:
-            skipped += 1
-        else:
-            classified.append(result)
-
-        if i < len(emails):
-            time.sleep(DELAY_BETWEEN_CALLS)
-
+    skipped = len(processed_now) - len(classified)
     print(f"\n  {len(classified)} mail(s) lié(s) à des candidatures.")
     print(f"  {skipped} mail(s) ignoré(s) (hors candidature).")
 
