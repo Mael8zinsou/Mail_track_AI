@@ -1,5 +1,5 @@
 """
-Classifie et résume chaque mail via Gemini 2.0 Flash.
+Classifie et résume chaque mail via Gemini.
 Retourne None si le mail n'est pas lié à une candidature.
 """
 import os
@@ -7,6 +7,12 @@ import json
 import time
 from google import genai
 from google.genai import errors as genai_errors
+
+MODEL = "gemini-2.5-flash-lite"
+
+
+class QuotaExhausted(Exception):
+    """Levée quand le quota journalier (RPD free tier) est épuisé."""
 
 CATEGORIES = [
     "Entretien",
@@ -68,20 +74,24 @@ def classify_email(email: dict) -> dict | None:
     for attempt in range(4):
         try:
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model=MODEL,
                 contents=prompt,
                 config={"temperature": 0.1, "max_output_tokens": 512},
             )
             break
         except genai_errors.ClientError as e:
-            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                if attempt == 3:
-                    raise
-                wait = 30 * (attempt + 1)
-                print(f"    Rate limit Gemini, attente {wait}s (tentative {attempt + 1}/4)...")
-                time.sleep(wait)
-            else:
+            msg = str(e)
+            if "429" not in msg and "RESOURCE_EXHAUSTED" not in msg:
                 raise
+            # Quota journalier épuisé (RPD) : inutile de réessayer aujourd'hui.
+            if "PerDay" in msg or "GenerateRequestsPerDay" in msg:
+                raise QuotaExhausted(msg)
+            # Sinon : rate limit par minute (RPM), on attend et on réessaye.
+            if attempt == 3:
+                raise QuotaExhausted(msg)
+            wait = 30 * (attempt + 1)
+            print(f"    Rate limit Gemini (RPM), attente {wait}s (tentative {attempt + 1}/4)...")
+            time.sleep(wait)
 
     raw = response.text.strip()
     if raw.startswith("```"):
