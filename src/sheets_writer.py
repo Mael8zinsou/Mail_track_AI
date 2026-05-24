@@ -46,6 +46,16 @@ def _get_service():
     return build("sheets", "v4", credentials=creds)
 
 
+def _get_sheet_gid(service, sheet_id: str, sheet_name: str) -> int:
+    """Retourne l'identifiant numérique (gid) de l'onglet portant ce nom."""
+    meta = service.spreadsheets().get(spreadsheetId=sheet_id).execute()
+    for sheet in meta.get("sheets", []):
+        props = sheet.get("properties", {})
+        if props.get("title") == sheet_name:
+            return props.get("sheetId", 0)
+    raise RuntimeError(f"Onglet '{sheet_name}' introuvable dans la Google Sheet.")
+
+
 def _ensure_headers(service, sheet_id: str, sheet_name: str) -> None:
     """Initialise ligne 1 (compteurs) et ligne 2 (en-têtes) si la feuille est vide."""
     result = service.spreadsheets().values().get(
@@ -106,12 +116,31 @@ def append_results(results: list[dict]) -> int:
             r.get("positif", "—"),
         ])
 
-    # Insère après la ligne 2 (ligne 3 = index 2, 0-based)
-    service.spreadsheets().values().insert(
+    # 1) Insère des lignes vides en position 3 (index 2, 0-based) pour pousser
+    #    les anciennes données vers le bas → les plus récents restent en haut.
+    sheet_gid = _get_sheet_gid(service, sheet_id, sheet_name)
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=sheet_id,
+        body={
+            "requests": [{
+                "insertDimension": {
+                    "range": {
+                        "sheetId": sheet_gid,
+                        "dimension": "ROWS",
+                        "startIndex": 2,
+                        "endIndex": 2 + len(rows),
+                    },
+                    "inheritFromBefore": False,
+                }
+            }]
+        },
+    ).execute()
+
+    # 2) Remplit les lignes fraîchement insérées.
+    service.spreadsheets().values().update(
         spreadsheetId=sheet_id,
         range=f"{sheet_name}!A3",
         valueInputOption="USER_ENTERED",
-        insertDataOption="INSERT_ROWS",
         body={"values": rows},
     ).execute()
 
