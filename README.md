@@ -161,4 +161,4 @@ mail_track_ai/
 | Gmail API | 1 milliard d'unités/jour | ~200 unités/jour |
 | Gemini 2.0 Flash | 1 500 req/jour, 1M tokens/min | ~20 req/jour |
 | Google Sheets API | 300 req/min | ~5 req/jour |
-| GitHub Actions | 2 000 min/mois (privé) | ~2 min/jour |
+| GitHub Actions | 2 000 min/mois (privé) | ~2 min/jour | 
