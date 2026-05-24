@@ -4,7 +4,9 @@ Retourne None si le mail n'est pas lié à une candidature.
 """
 import os
 import json
+import time
 import google.generativeai as genai
+from google.api_core.exceptions import ResourceExhausted
 
 CATEGORIES = [
     "Entretien",
@@ -48,7 +50,7 @@ def _get_client():
     if not api_key:
         raise RuntimeError("Variable d'environnement GEMINI_API_KEY manquante.")
     genai.configure(api_key=api_key)
-    return genai.GenerativeModel("gemini-2.0-flash")
+    return genai.GenerativeModel("gemini-1.5-flash")
 
 
 def classify_email(email: dict) -> dict | None:
@@ -64,10 +66,19 @@ def classify_email(email: dict) -> dict | None:
         body=email.get("body", ""),
     )
 
-    response = model.generate_content(
-        prompt,
-        generation_config={"temperature": 0.1, "max_output_tokens": 512},
-    )
+    for attempt in range(4):
+        try:
+            response = model.generate_content(
+                prompt,
+                generation_config={"temperature": 0.1, "max_output_tokens": 512},
+            )
+            break
+        except ResourceExhausted as e:
+            if attempt == 3:
+                raise
+            wait = 30 * (attempt + 1)
+            print(f"    Rate limit Gemini, attente {wait}s (tentative {attempt + 1}/4)...")
+            time.sleep(wait)
 
     raw = response.text.strip()
     if raw.startswith("```"):
