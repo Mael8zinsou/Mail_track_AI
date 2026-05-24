@@ -6,7 +6,25 @@
 
 Voir [doc.md](doc.md) pour le contexte complet. En bref : pipeline GitHub Actions qui lit Gmail → classifie via Gemini → écrit dans Google Sheets, déclenché par cron quotidien.
 
-## État actuel : CAUSE TROUVÉE — mauvais modèle
+## État actuel : PIPELINE VALIDÉ DE BOUT EN BOUT (run réussi)
+
+Premier run complet réussi : Gmail → dédup → Gemini → écriture Sheets (2 lignes ajoutées).
+La gestion `QuotaExhausted` fonctionne en réel : quota 20 RPD touché → arrêt propre, exit 0,
+données déjà classifiées écrites, reste reporté au prochain run.
+
+### Historique des bugs successifs résolus (tous réglés)
+1. `gemini-2.0-flash` → `limit: 0` (modèle sans quota free tier). Réglé : bascule `gemini-2.5-flash-lite`.
+2. SDK `google-generativeai` (v1beta, noms obsolètes) → migration `google-genai` (v1).
+3. 503 ServerError → retry dédié + arrêt propre.
+4. 403 Sheets → la Sheet n'était pas partagée avec le compte du token (multi-comptes Google). Réglé : partage en éditeur.
+5. `values().insert` inexistant → remplacé par `batchUpdate` (insertDimension) + `values().update` + helper `_get_sheet_gid`.
+
+### LIMITE CONNUE : 20 RPD trop juste
+1 requête Gemini par mail → 20 mails/jour sature le quota. **Amélioration recommandée : batcher N mails en 1 requête** (1 prompt = tableau de mails → tableau JSON de classifications). Diviserait le nb de requêtes par ~N.
+
+---
+
+## Diagnostic résolu (archive) : mauvais modèle
 
 **`gemini-2.0-flash` n'a plus de quota free tier** (retiré/remplacé). D'où `limit: 0` : aucun quota alloué à ce modèle. Confirmé via le dashboard AI Studio de l'utilisateur, qui ne montre AUCUNE donnée pour `2.0-flash`, mais des quotas pour les modèles actuels :
 
